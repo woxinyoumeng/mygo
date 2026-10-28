@@ -143,6 +143,9 @@ type window struct {
 	// pipActive tells that the page's document has a video in picture in
 	// picture, as its pipScript last said.
 	pipActive bool
+	// embedded is the child web view behind the page (embedded.go), nil
+	// when the page has none.
+	embedded *embedded
 }
 
 func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler) (platform.Window, error) {
@@ -667,6 +670,9 @@ func (w *window) cleanup() {
 		return
 	}
 	w.closeWebViews()
+	if w.embedded != nil {
+		w.embedded.close()
+	}
 	w.closed = true
 	if contextWindow == w {
 		contextWindow = nil

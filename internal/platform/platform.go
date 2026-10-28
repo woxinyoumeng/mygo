@@ -751,6 +751,38 @@ func (p *WebViewPlacement) At(x, y float64) bool {
 	return true
 }
 
+// EmbeddedWebViewOptions configures Window.NewEmbeddedWebView.
+type EmbeddedWebViewOptions struct {
+	// URL loads in the child right after it is created.
+	URL string
+	// UserAgent overrides the child's user agent.
+	UserAgent string
+}
+
+// EmbeddedWebView is a child web view behind the page of its window: the
+// page leaves a transparent hole where the child shows through, and hands
+// the pointer in that hole to the child while the page says the hole takes
+// input.
+type EmbeddedWebView interface {
+	// SetBounds places the child at r, in the page's viewport in CSS
+	// pixels: the origin is the top-left corner of the page.
+	SetBounds(r Rect)
+	// SetInputEnabled tells whether the hole takes the pointer: false
+	// while the page covers it with a dialog or backdrop, which then get
+	// the clicks.
+	SetInputEnabled(v bool)
+	LoadURL(url string)
+	// Close removes the child; the window keeps its page.
+	Close()
+}
+
+// EmbeddedWebViewer is a Window that hosts an EmbeddedWebView. Backends
+// that cannot implement it do not: Window.NewEmbeddedWebView reports that
+// then.
+type EmbeddedWebViewer interface {
+	NewEmbeddedWebView(opts EmbeddedWebViewOptions) (EmbeddedWebView, error)
+}
+
 // WindowHandler receives window and webview events from the backend.
 type WindowHandler interface {
 	// ShouldClose is called when the user tries to close the window.

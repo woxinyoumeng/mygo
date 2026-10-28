@@ -321,6 +321,16 @@ func webViewMethods() []objc.MethodDef {
 		sendSuper(self, "MyGoWebView", cmd, uintptr(ev))
 	}
 	return []objc.MethodDef{
+		// A page with a child web view behind it leaves the pointer in
+		// its hole to the views under it, where the child is
+		// (embedded.go); elsewhere, and while the page covers the hole
+		// with a dialog, the pointer is the page's.
+		method("hitTest:", func(self id, cmd objc.SEL, p NSPoint) id {
+			if w := theBackend.byWebView[self]; w != nil && w.embedded != nil && w.embedded.holeAt(p) {
+				return 0
+			}
+			return sendSuperPoint(self, "MyGoWebView", cmd, p)
+		}),
 		method("rightMouseDown:", press(1)),
 		method("otherMouseDown:", press(2)),
 		method("mouseMoved:", moved),
