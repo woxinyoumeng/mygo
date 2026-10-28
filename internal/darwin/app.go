@@ -26,6 +26,12 @@ type Backend struct {
 	byNSWindow map[id]*window
 	bySurface  map[id]*surface
 	byAccess   map[id]*accessElement
+	// byEmbedWeb finds the page-embedded child web view a message or a
+	// navigation is about (embedded.go), and embedHandler is the object
+	// the children share as their script message handler and navigation
+	// delegate.
+	byEmbedWeb   map[id]*embedded
+	embedHandler id
 
 	menuTarget id
 	menuItems  map[int][]id
@@ -68,6 +74,7 @@ func New() *Backend {
 		byNSWindow: map[id]*window{},
 		bySurface:  map[id]*surface{},
 		byAccess:   map[id]*accessElement{},
+		byEmbedWeb: map[id]*embedded{},
 		menuItems:  map[int][]id{},
 		trays:      map[id]*tray{},
 		hotkeys:    map[int]uintptr{},

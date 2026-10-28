@@ -170,6 +170,26 @@ func (w *Window) eval(ctx context.Context, code string) (jsontext.Value, error) 
 	if w.content != nil {
 		return nil, errNoPage
 	}
+	return evalIn(ctx, evalCanceled, code, func(body string, cb func(string, error)) error {
+		ran := false
+		w.do(func(n platform.Window) {
+			ran = true
+			n.CallAsyncFunction(body, cb)
+		})
+		if !ran {
+			return errDestroyed
+		}
+		return nil
+	})
+}
+
+// evalIn runs code in a page through call, its CallAsyncFunction, and
+// returns the JSON result, which shares the memory of the page's answer.
+// It runs code as an expression, and as the body of an async function when
+// it does not compile as one; call returns the error that says the page can
+// no longer run anything. canceled, if not nil, runs after the context
+// delivered its cancellation.
+func evalIn(ctx context.Context, canceled func(), code string, call func(body string, cb func(string, error)) error) (jsontext.Value, error) {
 	type result struct {
 		raw string
 		err error
@@ -179,42 +199,34 @@ func (w *Window) eval(ctx context.Context, code string) (jsontext.Value, error) 
 	ch := make(chan result, 2)
 	stop := context.AfterFunc(ctx, func() {
 		deliver(ch, result{err: ctx.Err()})
-		if evalCanceled != nil {
-			evalCanceled()
+		if canceled != nil {
+			canceled()
 		}
 	})
 	defer stop()
 
-	ran := false
-	w.do(func(n platform.Window) {
-		ran = true
-		expr := strings.TrimRight(code, " \t\r\n;")
-		n.CallAsyncFunction(fmt.Sprintf(evalExpr, expr), func(res string, err error) {
-			if err == nil {
-				deliver(ch, result{raw: res})
-				return
-			}
-			if !strings.HasPrefix(err.Error(), "SyntaxError") {
-				// It may have run (and then the page navigated or
-				// crashed): running it again could run it twice.
-				deliver(ch, result{err: err})
-				return
-			}
-			// Not an expression: run it as a function body instead. The
-			// first attempt failed to compile, so nothing ran twice.
-			onMain(func() {
-				if w.native == nil {
-					deliver(ch, result{err: errDestroyed})
-					return
-				}
-				w.native.CallAsyncFunction(fmt.Sprintf(evalBody, code), func(res string, err error) {
-					deliver(ch, result{raw: res, err: err})
-				})
-			})
-		})
+	expr := strings.TrimRight(code, " \t\r\n;")
+	err := call(fmt.Sprintf(evalExpr, expr), func(res string, err error) {
+		if err == nil {
+			deliver(ch, result{raw: res})
+			return
+		}
+		if !strings.HasPrefix(err.Error(), "SyntaxError") {
+			// It may have run (and then the page navigated or crashed):
+			// running it again could run it twice.
+			deliver(ch, result{err: err})
+			return
+		}
+		// Not an expression: run it as a function body instead. The first
+		// attempt failed to compile, so nothing ran twice.
+		if err := call(fmt.Sprintf(evalBody, code), func(res string, err error) {
+			deliver(ch, result{raw: res, err: err})
+		}); err != nil {
+			deliver(ch, result{err: err})
+		}
 	})
-	if !ran {
-		return nil, errDestroyed
+	if err != nil {
+		return nil, err
 	}
 	r := await(ch)
 	if r.err != nil {

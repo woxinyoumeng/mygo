@@ -4,6 +4,7 @@ package mygo
 
 import (
 	"context"
+	"encoding/json/jsontext"
 
 	"github.com/egoist/mygo/internal/platform"
 )
@@ -20,6 +21,10 @@ func pagesLocaleChanged(string) {}
 func decodeResult(raw []byte, v any) error { return errNoPage }
 
 func (w *Window) eval(ctx context.Context, code string) ([]byte, error) { return nil, errNoPage }
+
+func evalIn(ctx context.Context, canceled func(), code string, call func(body string, cb func(string, error)) error) (jsontext.Value, error) {
+	return nil, errNoPage
+}
 
 func (w *Window) sendTitleBar() {}
 

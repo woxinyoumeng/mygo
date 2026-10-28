@@ -757,6 +757,9 @@ type EmbeddedWebViewOptions struct {
 	URL string
 	// UserAgent overrides the child's user agent.
 	UserAgent string
+	// DataStore is the website data store of the child's session, nil for
+	// the default one.
+	DataStore DataStore
 }
 
 // EmbeddedWebView is a child web view behind the page of its window: the
@@ -772,6 +775,21 @@ type EmbeddedWebView interface {
 	// the clicks.
 	SetInputEnabled(v bool)
 	LoadURL(url string)
+	// CallAsyncFunction runs body as the body of an async function in the
+	// child's main frame (Page.CallAsyncFunction), on the main thread.
+	CallAsyncFunction(body string, cb func(result string, err error))
+	// PostMessage delivers msg to the child's page as the detail of a
+	// mygo:message CustomEvent.
+	PostMessage(msg string)
+	// OnMessage sets the callback for the strings the page posts, on the
+	// main thread.
+	OnMessage(fn func(string))
+	// OnDidLoad sets the callback for a main-frame navigation of the child
+	// that finished, with its URL, on the main thread.
+	OnDidLoad(fn func(url string))
+	// OnLoadFailed sets the callback for a main-frame navigation of the
+	// child that failed, on the main thread.
+	OnLoadFailed(fn func(err error))
 	// Close removes the child; the window keeps its page.
 	Close()
 }

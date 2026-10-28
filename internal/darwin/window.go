@@ -143,9 +143,9 @@ type window struct {
 	// pipActive tells that the page's document has a video in picture in
 	// picture, as its pipScript last said.
 	pipActive bool
-	// embedded is the child web view behind the page (embedded.go), nil
-	// when the page has none.
-	embedded *embedded
+	// embeds are the child web views behind the page (embedded.go),
+	// empty when the page has none.
+	embeds []*embedded
 }
 
 func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler) (platform.Window, error) {
@@ -670,9 +670,7 @@ func (w *window) cleanup() {
 		return
 	}
 	w.closeWebViews()
-	if w.embedded != nil {
-		w.embedded.close()
-	}
+	w.closeEmbeds()
 	w.closed = true
 	if contextWindow == w {
 		contextWindow = nil
@@ -1421,28 +1419,31 @@ func (w *window) URL() string {
 	return s
 }
 
+// addUserScript adds src to a content controller: at document start, or at
+// its end, and to the main frame only or to every frame.
+func addUserScript(ucc id, src string, atEnd, mainFrameOnly bool) {
+	injection := uintptr(0) // WKUserScriptInjectionTimeAtDocumentStart
+	if atEnd {
+		injection = 1
+	}
+	script := send(send(class("WKUserScript"), "alloc"), "initWithSource:injectionTime:forMainFrameOnly:",
+		uintptr(nsString(src)), injection, boolArg(mainFrameOnly))
+	send(ucc, "addUserScript:", uintptr(script))
+	release(script)
+}
+
 // addUserScripts adds the user scripts of the options to the content
 // controller, and the title bar's after them. Pool required.
 func (w *window) addUserScripts(zoom float64) {
-	add := func(src string, injection uintptr, mainFrameOnly bool) {
-		script := send(send(class("WKUserScript"), "alloc"), "initWithSource:injectionTime:forMainFrameOnly:",
-			uintptr(nsString(src)), injection, boolArg(mainFrameOnly))
-		send(w.ucc, "addUserScript:", uintptr(script))
-		release(script)
-	}
 	for _, s := range w.opts.UserScripts {
-		injection := uintptr(0) // WKUserScriptInjectionTimeAtDocumentStart
-		if s.AtDocumentEnd {
-			injection = 1
-		}
-		add(s.Source, injection, !s.AllFrames)
+		addUserScript(w.ucc, s.Source, s.AtDocumentEnd, !s.AllFrames)
 	}
 	if w.opts.PictureInPicture {
-		add(pipScript, 0, true)
+		addUserScript(w.ucc, pipScript, false, true)
 	}
 	if w.hiddenTitleBar() {
 		// After the bridge, which it tells: the room of the traffic lights.
-		add(bridge.TitleBarScript(w.TitleBar(), zoom), 0, true)
+		addUserScript(w.ucc, bridge.TitleBarScript(w.TitleBar(), zoom), false, true)
 	}
 }
 
@@ -1465,8 +1466,10 @@ func (w *window) Eval(js string) {
 	})
 }
 
-func (w *window) CallAsyncFunction(body string, cb func(string, error)) {
-	if !respondsTo(w.web, "callAsyncJavaScript:arguments:inFrame:inContentWorld:completionHandler:") {
+// callAsyncFunction runs body as the body of an async function in the main
+// frame of web (Page.CallAsyncFunction).
+func callAsyncFunction(web id, body string, cb func(string, error)) {
+	if !respondsTo(web, "callAsyncJavaScript:arguments:inFrame:inContentWorld:completionHandler:") {
 		cb("", errors.New("mygo: Eval requires macOS 11 or later"))
 		return
 	}
@@ -1479,9 +1482,13 @@ func (w *window) CallAsyncFunction(body string, cb func(string, error)) {
 			cb(goString(result), nil)
 		})
 		defer blk.Release()
-		send(w.web, "callAsyncJavaScript:arguments:inFrame:inContentWorld:completionHandler:",
+		send(web, "callAsyncJavaScript:arguments:inFrame:inContentWorld:completionHandler:",
 			uintptr(nsString(body)), 0, 0, uintptr(send(class("WKContentWorld"), "pageWorld")), uintptr(blk))
 	})
+}
+
+func (w *window) CallAsyncFunction(body string, cb func(string, error)) {
+	callAsyncFunction(w.web, body, cb)
 }
 
 func (w *window) SetZoom(f float64) { msgSetFloat(w.web, sel("setPageZoom:"), f) }
@@ -1960,6 +1967,7 @@ func (b *Backend) windowFor(delegate id) *window {
 }
 
 func registerWindowClasses() {
+	registerEmbeddedClasses()
 	// WebKit moves the keyboard out of a page past its ends through the
 	// window's key view loop: a web view in native UI gives it back to
 	// the content.

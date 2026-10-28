@@ -789,6 +789,7 @@ func (w *Window) destroy() {
 		// Backends report Closed synchronously, but be defensive.
 		(&windowHandler{w}).Closed()
 	}
+	closeEmbeddedViews(w)
 }
 
 // Show shows and focuses the window.

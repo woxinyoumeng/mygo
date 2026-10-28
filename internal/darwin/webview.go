@@ -326,8 +326,12 @@ func webViewMethods() []objc.MethodDef {
 		// (embedded.go); elsewhere, and while the page covers the hole
 		// with a dialog, the pointer is the page's.
 		method("hitTest:", func(self id, cmd objc.SEL, p NSPoint) id {
-			if w := theBackend.byWebView[self]; w != nil && w.embedded != nil && w.embedded.holeAt(p) {
-				return 0
+			if w := theBackend.byWebView[self]; w != nil {
+				for _, e := range w.embeds {
+					if e.holeAt(p) {
+						return 0
+					}
+				}
 			}
 			return sendSuperPoint(self, "MyGoWebView", cmd, p)
 		}),
